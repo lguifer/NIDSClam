@@ -141,10 +141,10 @@ After installing and configuring all necessary tools, you can use **NIDSClam** t
 
 #### **2.1 Running NIDSClam**
 
-You can run **NIDSClam** by providing it with the log files from **Suricata** and **Zeek**.
+You can run **NIDSClam** by providing it with the log files from **Suricata** or **Zeek**.
 
 ```bash
-python nidsclam.py --suricata-log-file /var/log/suricata/eve.json --zeek-log-file /usr/local/zeek/logs/current/conn.log --filestore-path /path/to/filestore
+python nidsclam.py --suricata-log-file /var/log/suricata/eve.json --filestore-path /path/to/filestore
 ```
 
 **Options:**
