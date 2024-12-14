@@ -1,5 +1,3 @@
-import os
-import socket
 import json
 import subprocess
 import argparse
@@ -12,12 +10,12 @@ from zoneinfo import ZoneInfo
 
 # Define the log file path as a global variable
 LOG_FILE_PATH = "/var/log/nidsclam/nidsclam.log"
-YARA_RULES_PATH = "/home/cosar/NIDSClam/all_rules.yar"
+YARA_RULES_PATH = "/home/cosar/NIDSClam/packages/full/yara-rules-cleaned.yar"
 DATE_CONFIG_FILE = "/home/cosar/NIDSClam/last_processed_date.txt"
 hostname = socket.gethostname()
 THREADS = 1
 last_processed_date_str = ""
-last_processed_date = None
+last_processed_date = "12/11/1970-06:46:45.323973"
 
 # Define time zone CET
 cet = ZoneInfo("Europe/Madrid")
@@ -34,7 +32,7 @@ if not os.path.exists(LOG_FILE_PATH):
 # Set up logging configuration
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s ROA_COS_SERVER NIDS[1]: %(message)s",
+    format=f"%(asctime)s {hostname} NIDS[1]: %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE_PATH),
         logging.StreamHandler()  # Also log to the console for visibility
@@ -95,7 +93,7 @@ def process_logs():
             # print("Processing Zeek log file...")
             process_zeek_log(args.zeek_log_file)
     elif args.file_or_dir:
-        print(f"Processing file or directory: {args.file_or_dir}")
+#        print(f"Processing file or directory: {args.file_or_dir}")
         process_direct_file_or_dir(args.file_or_dir)
     else:
         print("No log file or file/directory specified for processing.")
@@ -138,9 +136,30 @@ def process_suricata_log(suricata_log_file):
                 process_event(eve, eve.get('src_ip'), eve.get('dest_ip'), eve['fileinfo']['filename'], event_timestamp)
 
 # Process Zeek logs
-def process_zeek_log(zeek_log_file):
+def process_zeek_log(zeek_log_file, max_threads=20):
+    """
+    Procesa un archivo Zeek utilizando concurrencia para cada línea de la salida del comando.
+    :param zeek_log_file: Ruta del archivo Zeek a procesar.
+    :param max_threads: Número máximo de hilos a usar para procesar líneas.
+    """
+    # Construir el comando
+    command = f"cat {zeek_log_file} | /opt/zeek/bin/zeek-cut id.orig_h id.resp_h extracted ts"
+
+    # Ejecutar el comando
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+
+    if process.returncode != 0:
+        print(f"Error in executing zeek-cut: {stderr.decode()}")
+        return
+
+    # Crear un pool de hilos para procesar líneas en paralelo
+    with ThreadPoolExecutor(max_threads) as executor:
+        # Dividir la salida en líneas y procesarlas concurrentemente
+        executor.map(process_line, stdout.decode().splitlines())
+def process_zeek_log_ant(zeek_log_file):
     # Run 'zeek-cut' command using subprocess
-    command = f"cat {zeek_log_file} | zeek-cut id.orig_h id.resp_h extracted ts"
+    command = f"cat {zeek_log_file} | /opt/zeek/bin/zeek-cut id.orig_h id.resp_h extracted ts"
 
     # Execute the command in the shell and capture the output
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -165,9 +184,28 @@ def process_zeek_log(zeek_log_file):
             # print(f"timestamp: {event_timestamp}, src: {src_ip}, dst: {dest_ip}, path: {filename}")
             # event_timestamp = datetime.now(timezone.utc)
             # print(f"saved: {last_processed_date}")
-            if event_timestamp > last_processed_date:
+            if last_processed_date is None or event_timestamp > last_processed_date:
                 process_event({}, src_ip, dest_ip, filename, event_timestamp)
 
+def process_line(line):
+    """
+    Procesa una línea de salida del comando `zeek-cut`.
+    """
+    global last_processed_date
+
+    parts = line.split()
+    if len(parts) >= 4:  # Verificar que todos los campos estén presentes
+        src_ip = parts[0]
+        dest_ip = parts[1]
+        filename = parts[2]
+        timestamp = parts[3]
+
+        dt_utc = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+        event_timestamp = dt_utc.astimezone(ZoneInfo("Europe/Madrid"))
+
+        # Procesar eventos nuevos
+        if last_processed_date is None or event_timestamp > last_processed_date:
+            process_event({}, src_ip, dest_ip, filename, event_timestamp)
 def process_event(eve, src_ip, dest_ip, filename, event_timestamp):
     if eve is not None and args.suricata_log_file:
         name = eve['fileinfo']['sha256'] if 'fileinfo' in eve else 'unknown'
@@ -199,7 +237,7 @@ def process_event(eve, src_ip, dest_ip, filename, event_timestamp):
         stdout=subprocess.PIPE, text=True
     ).stdout.strip()
     yara_result = subprocess.run(
-        ['yara', '-r', YARA_RULES_PATH, captured_file],
+        ['yara', '-r', '-w', YARA_RULES_PATH, captured_file],
         stdout=subprocess.PIPE, text=True
     ).stdout.strip()
 
@@ -220,7 +258,15 @@ def process_event(eve, src_ip, dest_ip, filename, event_timestamp):
     # Save the date of the last processed event if it's a Suricata event
     if eve is not None:
         write_last_processed_date(event_timestamp.astimezone(cet).isoformat())
-        print(f"guardado en: {event_timestamp.astimezone(cet)}")
+        #print(f"guardado en: {event_timestamp.astimezone(cet)}")
 
 # Run log processing based on arguments
 process_logs()
+
+
+
+
+
+
+
+
