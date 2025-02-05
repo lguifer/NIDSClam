@@ -41,7 +41,7 @@ class AppConfig(BaseModel):
 # Constants #
 # ###########
 VERSION = "2.0.0"
-SERVICE_NAME = "nidsclam-enterprise"
+SERVICE_NAME = "nidsclam"
 SIGNATURES = {
     "CLAMAV_FOUND": re.compile(r"FOUND\b"),
     "YARA_MATCH": re.compile(r"\bmatched\b")
