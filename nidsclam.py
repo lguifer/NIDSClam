@@ -30,7 +30,7 @@ from watchdog.events import FileSystemEventHandler
 # ###############
 class AppConfig(BaseModel):
     log_path: FilePath = Path("/var/log/nidsclam/nidsclam.log")
-    yara_rules: FilePath = Path("/home/cosar/NIDSClam/packages/full/yara-rules-filtered.yar")
+    yara_rules: FilePath = Path("/root/NIDSClam/packages/full/yara-rules-filtered.yar")
     timezone: str = "Europe/Madrid"
     max_threads: int = 20
     scan_timeout: int = 300
@@ -133,10 +133,12 @@ class LogProcessor:
         logger = logging.getLogger(SERVICE_NAME)
         logger.setLevel(logging.DEBUG)
 
-        formatter = logging.Formatter(
-            f"%(asctime)s.%(msecs)03d {socket.gethostname()} {SERVICE_NAME}[%(process)d]: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S"
-        )
+#        formatter = logging.Formatter(
+#            f"%(asctime)s.%(msecs)03d {socket.gethostname()} {SERVICE_NAME}[%(process)d]: %(message)s",
+#            datefmt="%Y-%m-%dT%H:%M:%S"
+#        )
+        formatter = logging.Formatter(f"%(asctime)s {socket.gethostname()} {SERVICE_NAME}[%(process)d]: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
 
         file_handler = logging.FileHandler(self.config.log_path)
         file_handler.setFormatter(formatter)
@@ -277,8 +279,10 @@ class LogProcessor:
         """Monitor Zeek logs using watchdog with proper header handling"""
         self.logger.info(f"Starting Zeek log monitoring: {log_path}")
         
-        if not log_path.exists():
-            raise FileNotFoundError(f"Zeek log file not found: {log_path}")
+        while not log_path.exists():
+            self.logger.warning(f"Zeek log file {log_path} not found. Retrying in 60 seconds...")
+            time.sleep(60)
+
 
         # Parse headers first
         self._parse_zeek_headers(log_path)
